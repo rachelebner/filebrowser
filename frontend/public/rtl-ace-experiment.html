@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ace RTL source integrity experiment</title>
+    <style>
+      body {
+        font:
+          14px system-ui,
+          sans-serif;
+        margin: 1rem auto;
+        max-width: 72rem;
+      }
+      #editor {
+        border: 1px solid #777;
+        height: 28rem;
+        margin-top: 1rem;
+      }
+      button,
+      select {
+        font: inherit;
+        margin-right: 0.5rem;
+      }
+      #result {
+        white-space: pre-wrap;
+      }
+      .pass {
+        color: #087f23;
+      }
+      .fail {
+        color: #b00020;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Ace RTL Markdown source integrity experiment</h1>
+    <p>
+      This isolated fixture uses Ace 1.44.0's display-only
+      <code>rtl</code> option. It intentionally never enables
+      <code>rtlText</code>.
+    </p>
+    <label
+      >Direction
+      <select id="direction">
+        <option value="auto">auto</option>
+        <option value="rtl">rtl</option>
+        <option value="ltr">ltr</option>
+      </select>
+    </label>
+    <button id="check">Run integrity check</button>
+    <output id="result"></output>
+    <div id="editor"></div>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.44.0/src-noconflict/ace.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.44.0/src-noconflict/ext-rtl.js"></script>
+    <script>
+      const source = `# עברית and English: punctuation, links, and tables
+
+שלום, **bold English** — [קישור](https://example.test/a?x=1&y=2#עברית).
+مرحبا \`inline-code --flag=value\` and \`path/to/file.md\`.
+
+| עברית | English | رابط |
+| --- | --- | --- |
+| שלום | left-to-right | [مثال](https://example.test) |
+
+\`\`\`ts
+const greeting = "שלום / مرحبا";
+console.log(greeting, { markdown: "[link](https://example.test)" });
+\`\`\``;
+      const editor = ace.edit("editor", {
+        value: source,
+        mode: "ace/mode/markdown",
+        wrap: true,
+      });
+      const direction = document.querySelector("#direction");
+      const result = document.querySelector("#result");
+      const bidiControls = /[\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
+
+      function setDirection() {
+        // `auto` is deliberately deterministic and source-safe: normal Ace bidi.
+        editor.setOption("rtl", direction.value === "rtl");
+      }
+
+      function check() {
+        try {
+          ["rtl", "ltr", "auto"].forEach((value) => {
+            direction.value = value;
+            setDirection();
+            editor.navigateFileStart();
+            editor.navigateRight();
+            editor.navigateLineEnd();
+            editor.selectAll();
+            if (editor.getCopyText() !== source)
+              throw new Error("selection changed source");
+            editor.clearSelection();
+            editor.insert("x"); // normal typing
+            editor.undo();
+            editor.execCommand("paste", { text: "paste" });
+            editor.undo();
+            const savePayload = editor.getValue(); // same payload File Browser saves
+            if (savePayload !== source)
+              throw new Error(`${value}: source changed`);
+            if (bidiControls.test(savePayload))
+              throw new Error(`${value}: bidi control persisted`);
+          });
+          result.className = "pass";
+          result.textContent =
+            "PASS: RTL/LTR/auto toggles and edit/selection/navigation/undo/paste/save-payload checks preserved the exact source.";
+        } catch (error) {
+          result.className = "fail";
+          result.textContent = `FAIL: ${error.message}`;
+        }
+      }
+
+      direction.addEventListener("change", setDirection);
+      document.querySelector("#check").addEventListener("click", check);
+      setDirection();
+    </script>
+  </body>
+</html>

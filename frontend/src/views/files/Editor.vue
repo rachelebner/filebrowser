@@ -89,10 +89,12 @@
 <script setup lang="ts">
 import { files as api } from "@/api";
 import buttons from "@/utils/buttons";
+import { applyMarkdownSourceDirection } from "@/utils/aceRtl";
 import url from "@/utils/url";
 import ace, { Ace, version as ace_version } from "ace-builds";
 import "ace-builds/src-noconflict/ext-language_tools";
 import modelist from "ace-builds/src-noconflict/ext-modelist";
+import "ace-builds/src-noconflict/ext-rtl";
 import DOMPurify from "dompurify";
 
 import Breadcrumbs from "@/components/Breadcrumbs.vue";
@@ -110,6 +112,7 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  watch,
   watchEffect,
 } from "vue";
 import { useI18n } from "vue-i18n";
@@ -152,6 +155,16 @@ const katexOptions = {
 marked.use(markedKatex(katexOptions));
 
 const isSelectionEmpty = ref(true);
+
+const updateMarkdownSourceDirection = () => {
+  if (!editor.value || !isMarkdownFile.value) return;
+
+  // Do not use Ace's `rtlText`: it persists U+202B control characters during
+  // edits. `rtl` changes rendering/cursor behavior without touching the doc.
+  applyMarkdownSourceDirection(editor.value, markdownDirection.value);
+};
+
+watch(markdownDirection, updateMarkdownSourceDirection);
 
 const executeEditorCommand = (name: string) => {
   if (name == "paste") {
@@ -265,6 +278,7 @@ const initEditor = (fileContent: string) => {
   });
 
   editor.value.setFontSize(fontSize.value);
+  updateMarkdownSourceDirection();
   editor.value.focus();
 
   const selection = editor.value?.getSelection();
