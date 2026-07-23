@@ -26,7 +26,7 @@
 
       <action
         icon="preview"
-        :label="t('buttons.preview')"
+        :label="isPreview ? t('buttons.editAsText') : t('buttons.preview')"
         @action="preview()"
         v-show="isMarkdownFile"
       />
@@ -44,7 +44,15 @@
       <div class="editor-header">
         <Breadcrumbs base="/files" noLink />
 
-        <div>
+        <div class="editor-controls">
+          <label v-if="isMarkdownFile" class="direction-control">
+            <span>{{ t("buttons.direction") }}</span>
+            <select :value="markdownDirection" @change="setDirection">
+              <option value="auto">{{ t("buttons.auto") }}</option>
+              <option value="rtl">RTL</option>
+              <option value="ltr">LTR</option>
+            </select>
+          </label>
           <button
             :disabled="isSelectionEmpty"
             @click="executeEditorCommand('copy')"
@@ -70,6 +78,7 @@
         v-show="isPreview && isMarkdownFile"
         id="preview-container"
         class="md_preview"
+        :dir="markdownDirection"
         v-html="previewContent"
       ></div>
       <form v-show="!isPreview || !isMarkdownFile" id="editor"></form>
@@ -95,7 +104,14 @@ import { useLayoutStore } from "@/stores/layout";
 import { getEditorTheme } from "@/utils/theme";
 import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
-import { inject, onBeforeUnmount, onMounted, ref, watchEffect } from "vue";
+import {
+  computed,
+  inject,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watchEffect,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import { onBeforeRouteUpdate, useRoute, useRouter } from "vue-router";
 import { read, copy } from "@/utils/clipboard";
@@ -114,11 +130,21 @@ const router = useRouter();
 const editor = ref<Ace.Editor | null>(null);
 const fontSize = ref(parseInt(localStorage.getItem("editorFontSize") || "14"));
 
-const isPreview = ref(false);
 const previewContent = ref("");
-const isMarkdownFile =
-  fileStore.req?.name.endsWith(".md") ||
-  fileStore.req?.name.endsWith(".markdown");
+const isMarkdownFile = computed(
+  () =>
+    fileStore.req?.name.endsWith(".md") ||
+    fileStore.req?.name.endsWith(".markdown")
+);
+const isPreview = computed(
+  () => isMarkdownFile.value && route.query.mode === "preview"
+);
+const markdownDirection = computed<"auto" | "rtl" | "ltr">(() => {
+  const direction = route.query.dir;
+  return direction === "rtl" || direction === "ltr" || direction === "auto"
+    ? direction
+    : "auto";
+});
 const katexOptions = {
   output: "mathml" as const,
   throwOnError: false,
@@ -161,7 +187,7 @@ onMounted(() => {
   const fileContent = fileStore.req?.content || "";
 
   watchEffect(async () => {
-    if (isMarkdownFile && isPreview.value) {
+    if (isMarkdownFile.value && isPreview.value) {
       const new_value = editor.value?.getValue() || "";
       try {
         previewContent.value = DOMPurify.sanitize(await marked(new_value));
@@ -199,6 +225,13 @@ onBeforeUnmount(() => {
 });
 
 onBeforeRouteUpdate((to, from, next) => {
+  // Preview and direction controls only update the query string. They must not
+  // interrupt editing or prevent browser Back/Forward from restoring state.
+  if (to.path === from.path) {
+    next();
+    return;
+  }
+
   if (editor.value?.session.getUndoManager().isClean()) {
     next();
 
@@ -318,11 +351,33 @@ const close = () => {
 
 const finishClose = () => {
   const uri = url.removeLastDir(route.path) + "/";
-  router.push({ path: uri });
+  const query = { ...route.query };
+  delete query.mode;
+  delete query.dir;
+  router.push({ path: uri, query });
 };
 
 const preview = () => {
-  isPreview.value = !isPreview.value;
+  router.push({
+    query: {
+      ...route.query,
+      mode: isPreview.value ? "edit" : "preview",
+    },
+  });
+};
+
+const setDirection = (event: Event) => {
+  const direction = (event.target as HTMLSelectElement).value;
+  if (direction !== "auto" && direction !== "rtl" && direction !== "ltr") {
+    return;
+  }
+
+  router.push({
+    query: {
+      ...route.query,
+      dir: direction,
+    },
+  });
 };
 </script>
 
@@ -338,7 +393,25 @@ const preview = () => {
   justify-content: space-between;
 }
 
-.editor-header > div > button {
+.editor-controls {
+  display: flex;
+  align-items: center;
+}
+
+.direction-control {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.direction-control select {
+  color: var(--fg);
+  background: var(--background);
+}
+
+.editor-controls > button {
   background: transparent;
   color: var(--action);
   border: none;
@@ -347,16 +420,16 @@ const preview = () => {
   cursor: pointer;
 }
 
-.editor-header > div > button:hover:not(:disabled) {
+.editor-controls > button:hover:not(:disabled) {
   opacity: 1;
 }
 
-.editor-header > div > button:disabled {
+.editor-controls > button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.editor-header > div > button > span > i {
+.editor-controls > button > span > i {
   font-size: 1.2rem;
 }
 </style>
