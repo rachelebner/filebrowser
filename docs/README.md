@@ -16,3 +16,7 @@ The application has two kinds of state:
 2. **Managed content** — the actual files and directories. These remain on the host filesystem and are accessed through a per-user scoped filesystem.
 
 When changing behavior, keep that distinction explicit: database updates do not alter files unless the relevant handler deliberately does so.
+
+## Compatibility builds
+
+The Mac mini deployment intentionally uses the [`compat/v2.63.14-markdown-rtl`](https://github.com/rachelebner/filebrowser/blob/compat/v2.63.14-markdown-rtl/docs/markdown-rtl-backport.md) branch. It backports the Markdown URL and RTL work to File Browser v2.63.14 while preserving that release's backend and filesystem behavior. Keep this branch separate from `master`; it is a deployment compatibility line, not a feature branch to merge back.
