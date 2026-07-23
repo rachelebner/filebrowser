@@ -1,5 +1,6 @@
 {
   "buttons": {
+    "auto": "Auto",
     "cancel": "Cancel",
     "clear": "Clear",
     "close": "Close",
@@ -10,6 +11,7 @@
     "copyDownloadLinkToClipboard": "Copy download link to clipboard",
     "create": "Create",
     "delete": "Delete",
+    "direction": "Direction",
     "download": "Download",
     "file": "File",
     "folder": "Folder",

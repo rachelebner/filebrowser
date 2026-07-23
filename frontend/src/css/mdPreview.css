@@ -9,3 +9,10 @@
   overflow: auto;
   flex: 1;
 }
+
+/* Code remains left-to-right regardless of the document direction. */
+.md_preview pre,
+.md_preview code {
+  direction: ltr;
+  text-align: left;
+}

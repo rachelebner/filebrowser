@@ -105,9 +105,14 @@ onUnmounted(() => {
   fetchDataController.abort();
 });
 
-watch(route, () => {
-  fetchData();
-});
+// Editor mode and direction are query-only state. Do not refetch the file
+// when browser Back/Forward restores those values.
+watch(
+  () => route.path,
+  () => {
+    fetchData();
+  }
+);
 watch(reload, (newValue) => {
   newValue && fetchData();
 });
