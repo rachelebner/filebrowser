@@ -76,9 +76,11 @@ jobs:
       - name: Sign binary
         run: |
           # macOS ties file-access consent to the signing identity. Keep it stable across deploys.
-          ID="FileBrowser RTL Local"
-          if ! security find-identity -p codesigning | grep -q "$ID"; then ID="-"; fi
-          codesign --force --sign "$ID" --identifier com.rachelebner.filebrowser.rtl dist/filebrowser
+          # The key lives only in a dedicated keychain on the Mac. Its password is in a mode-600 file outside the repo.
+          KC="$HOME/Library/Keychains/filebrowser-signing.keychain-db"
+          security unlock-keychain -p "$(cat "$HOME/.filebrowser-signing/keychain-pass")" "$KC"
+          codesign --force --sign "FileBrowser RTL Local" --keychain "$KC" --identifier com.rachelebner.filebrowser.rtl dist/filebrowser
+          codesign --verify --strict dist/filebrowser
       - name: Swap binary
         id: swap
         run: |

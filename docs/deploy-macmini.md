@@ -29,9 +29,35 @@
 - macOS ties Documents access to the binary's signing identity.
 - A new unsigned or differently signed binary blocks in `open()`. The SPA loads, but every file API call hangs.
 - The deploy signs the binary with the identifier `com.rachelebner.filebrowser.rtl`.
-- Best: create a self-signed code-signing certificate named `FileBrowser RTL Local` in the login keychain. The deploy uses it when present.
-- Grant the app Full Disk Access once in System Settings > Privacy & Security.
+- The certificate is a self-signed identity named `FileBrowser RTL Local`. It is stable, so consent survives new builds.
+- The signing step fails if the identity is missing. It never falls back to ad-hoc signing.
 - The health check also lists the file tree, so a blocked read fails the deploy.
+
+### Signing setup on the Mac Mini
+
+- **Keychain:** `~/Library/Keychains/filebrowser-signing.keychain-db`. It holds the private key. Nothing else uses it.
+- **Password file:** `~/.filebrowser-signing/keychain-pass`, mode 600, in a mode 700 directory. It is outside the repo.
+- **Public cert:** `~/.filebrowser-signing/cert.pem`. It is public, but do not commit it.
+- The deploy job unlocks the keychain from the password file, then runs `codesign --keychain`.
+- Nothing is stored in GitHub secrets. The key and cert are never committed.
+- The cert needs a one-time trust for code signing. macOS asks for the login password, so do it at the Mac's desktop:
+
+```sh
+security add-trusted-cert -r trustRoot -p codeSign \
+  -k ~/Library/Keychains/filebrowser-signing.keychain-db ~/.filebrowser-signing/cert.pem
+```
+
+- Check it with `security find-identity -v -p codesigning ~/Library/Keychains/filebrowser-signing.keychain-db`.
+- The cert is valid for 10 years. To replace it, generate a new one and re-trust it. Consent must then be granted again.
+
+### First deploy with a new identity
+
+- A new signing identity means a new app to macOS.
+- Expect one consent prompt for Documents after the first deploy that uses the new cert.
+- Approve it at the Mac's desktop. File API calls hang until then.
+- The health check fails while the prompt is pending. The job rolls back to `filebrowser.prev`.
+- Plan: be at the Mac, run the deploy, approve the prompt, then run the deploy again.
+- Later deploys keep the same identity, so no more prompts.
 
 ## Manual deploy
 
@@ -52,6 +78,28 @@ launchctl kickstart -k gui/$(id -u)/com.openclaw.obsidian-server
 
 - Or revert the commit on `prod` and let the workflow redeploy.
 - `filebrowser.prev` holds only the last binary. A second deploy overwrites it.
+
+### Known-good backup
+
+- `filebrowser.known-good` sits next to the binary. Deploys never touch it.
+- It is a copy of the `5770f5b7` build, which had file access granted. The original `f3cdc5c6` build no longer exists.
+- Restore it:
+
+```sh
+APP="/Users/razi/Applications/FileBrowser RTL.app/Contents/MacOS/filebrowser"
+cp "$APP.known-good" "$APP"
+launchctl kickstart -k gui/$(id -u)/com.openclaw.rzcontent-server
+launchctl kickstart -k gui/$(id -u)/com.openclaw.obsidian-server
+```
+
+- Promote the running binary after you confirm it works:
+
+```sh
+cp "$APP" "$APP.known-good"
+chmod 700 "$APP.known-good"
+```
+
+- Promote by hand only. Check both ports and a file read first.
 
 ## Runner
 
