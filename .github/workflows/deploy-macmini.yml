@@ -68,11 +68,22 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/prod'
     runs-on: [self-hosted, filebrowser-macmini]
+    timeout-minutes: 30
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: filebrowser-darwin-arm64
           path: dist
+      - name: Sign binary
+        run: |
+          # macOS ties file-access consent to the signing identity. Keep it stable across deploys.
+          # The key lives only in a dedicated keychain on the Mac. Its password is in a mode-600 file outside the repo.
+          KC="$HOME/Library/Keychains/filebrowser-signing.keychain-db"
+          # codesign only finds the identity when the keychain is in the user search list.
+          security list-keychains -d user -s "$HOME/Library/Keychains/login.keychain-db" "$KC"
+          security unlock-keychain -p "$(cat "$HOME/.filebrowser-signing/keychain-pass")" "$KC"
+          codesign --force --sign "FileBrowser RTL Local" --keychain "$KC" --identifier com.rachelebner.filebrowser.rtl dist/filebrowser
+          codesign --verify --strict dist/filebrowser
       - name: Swap binary
         id: swap
         run: |
@@ -94,8 +105,20 @@ jobs:
             done
             return 1
           }
+          # A blocked file read hangs the API while the SPA still loads, so read the file tree too.
+          # A new signing identity triggers a macOS consent prompt. Wait up to ~11 minutes for approval before rolling back.
+          check_api() {
+            for i in $(seq 1 60); do
+              T="$(curl -sS -m 10 -X POST -d '' "$1/api/login")"
+              if curl -fsS -m 10 -o /dev/null -H "X-Auth: $T" "$1/api/resources/"; then return 0; fi
+              sleep 1
+            done
+            return 1
+          }
           check http://127.0.0.1:8765/files/
           check http://127.0.0.1:8768/
+          check_api http://127.0.0.1:8765/files
+          check_api http://127.0.0.1:8768
           "$APP_BIN" version
       - name: Roll back
         if: failure() && steps.swap.conclusion == 'success'
