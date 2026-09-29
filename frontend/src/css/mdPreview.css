@@ -10,6 +10,11 @@
   flex: 1;
 }
 
+/* Global styles strip link underlines; restore them in the preview. */
+.md_preview a {
+  text-decoration: underline;
+}
+
 /* Code remains left-to-right regardless of the document direction. */
 .md_preview pre,
 .md_preview code {
