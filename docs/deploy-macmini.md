@@ -24,6 +24,15 @@
 - Each is retried for up to 60 seconds.
 - On failure the job restores `filebrowser.prev`, restarts both agents and fails.
 
+## File access permission (macOS)
+
+- macOS ties Documents access to the binary's signing identity.
+- A new unsigned or differently signed binary blocks in `open()`. The SPA loads, but every file API call hangs.
+- The deploy signs the binary with the identifier `com.rachelebner.filebrowser.rtl`.
+- Best: create a self-signed code-signing certificate named `FileBrowser RTL Local` in the login keychain. The deploy uses it when present.
+- Grant the app Full Disk Access once in System Settings > Privacy & Security.
+- The health check also lists the file tree, so a blocked read fails the deploy.
+
 ## Manual deploy
 
 - Open the Actions tab, pick "Deploy to Mac Mini", click "Run workflow".

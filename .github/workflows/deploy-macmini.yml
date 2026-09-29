@@ -73,6 +73,12 @@ jobs:
         with:
           name: filebrowser-darwin-arm64
           path: dist
+      - name: Sign binary
+        run: |
+          # macOS ties file-access consent to the signing identity. Keep it stable across deploys.
+          ID="FileBrowser RTL Local"
+          if ! security find-identity -p codesigning | grep -q "$ID"; then ID="-"; fi
+          codesign --force --sign "$ID" --identifier com.rachelebner.filebrowser.rtl dist/filebrowser
       - name: Swap binary
         id: swap
         run: |
@@ -94,8 +100,15 @@ jobs:
             done
             return 1
           }
+          # A blocked file read hangs the API while the SPA still loads, so read the file tree too.
+          check_api() {
+            T="$(curl -sS -m 10 -X POST -d '' "$1/api/login")"
+            curl -fsS -m 10 -o /dev/null -H "X-Auth: $T" "$1/api/resources/"
+          }
           check http://127.0.0.1:8765/files/
           check http://127.0.0.1:8768/
+          check_api http://127.0.0.1:8765/files
+          check_api http://127.0.0.1:8768
           "$APP_BIN" version
       - name: Roll back
         if: failure() && steps.swap.conclusion == 'success'
