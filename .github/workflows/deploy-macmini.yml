@@ -1,0 +1,107 @@
+name: Deploy to Mac Mini
+
+# Never add pull_request or pull_request_target: the deploy job runs on a self-hosted runner.
+on:
+  push:
+    branches:
+      - "prod"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-macmini
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  APP_BIN: /Users/razi/Applications/FileBrowser RTL.app/Contents/MacOS/filebrowser
+  AGENTS: com.openclaw.rzcontent-server com.openclaw.obsidian-server
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: "frontend/package.json"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
+          cache: "pnpm"
+          cache-dependency-path: "frontend/pnpm-lock.yaml"
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+      - name: Build darwin/arm64 binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: darwin
+          GOARCH: arm64
+        run: |
+          BASE="$(git describe --tags --abbrev=0 --match='v*' | cut -c 2-)"
+          VERSION="${BASE}-markdown-rtl-backport"
+          COMMIT="$(git rev-parse --short=8 HEAD)"
+          go build -ldflags="-s -w -X github.com/filebrowser/filebrowser/v2/version.Version=${VERSION} -X github.com/filebrowser/filebrowser/v2/version.CommitSHA=${COMMIT}" -o filebrowser .
+          echo "${VERSION}" > VERSION
+          echo "${COMMIT}" > COMMIT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: filebrowser-darwin-arm64
+          path: |
+            filebrowser
+            VERSION
+            COMMIT
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy
+    needs: build
+    if: github.ref == 'refs/heads/prod'
+    runs-on: [self-hosted, filebrowser-macmini]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: filebrowser-darwin-arm64
+          path: dist
+      - name: Swap binary
+        id: swap
+        run: |
+          chmod +x dist/filebrowser
+          cp "$APP_BIN" "$APP_BIN.prev"
+          cp dist/filebrowser "$APP_BIN.new"
+          mv "$APP_BIN.new" "$APP_BIN"
+      - name: Restart agents
+        run: |
+          for a in $AGENTS; do
+            launchctl kickstart -k "gui/$(id -u)/$a"
+          done
+      - name: Health check
+        run: |
+          check() {
+            for i in $(seq 1 30); do
+              if curl -fsS -o /dev/null "$1"; then return 0; fi
+              sleep 2
+            done
+            return 1
+          }
+          check http://127.0.0.1:8765/files/
+          check http://127.0.0.1:8768/
+          "$APP_BIN" version
+      - name: Roll back
+        if: failure() && steps.swap.conclusion == 'success'
+        run: |
+          cp "$APP_BIN.prev" "$APP_BIN.restore"
+          mv "$APP_BIN.restore" "$APP_BIN"
+          for a in $AGENTS; do
+            launchctl kickstart -k "gui/$(id -u)/$a"
+          done
