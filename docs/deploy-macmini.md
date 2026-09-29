@@ -38,6 +38,7 @@
 - **Keychain:** `~/Library/Keychains/filebrowser-signing.keychain-db`. It holds the private key. Nothing else uses it.
 - **Password file:** `~/.filebrowser-signing/keychain-pass`, mode 600, in a mode 700 directory. It is outside the repo.
 - **Public cert:** `~/.filebrowser-signing/cert.pem`. It is public, but do not commit it.
+- The keychain is in the user search list, next to `login.keychain-db`. `codesign` does not find the identity otherwise. The deploy sets this each run.
 - The deploy job unlocks the keychain from the password file, then runs `codesign --keychain`.
 - Nothing is stored in GitHub secrets. The key and cert are never committed.
 - The cert needs a one-time trust for code signing. macOS asks for the login password, so do it at the Mac's desktop:
