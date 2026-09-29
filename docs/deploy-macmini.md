@@ -55,8 +55,9 @@ security add-trusted-cert -r trustRoot -p codeSign \
 - A new signing identity means a new app to macOS.
 - Expect one consent prompt for Documents after the first deploy that uses the new cert.
 - Approve it at the Mac's desktop. File API calls hang until then.
-- The health check fails while the prompt is pending. The job rolls back to `filebrowser.prev`.
-- Plan: be at the Mac, run the deploy, approve the prompt, then run the deploy again.
+- The file-read health check retries for about 11 minutes, so there is time to approve the prompt.
+- If nobody approves in time, the job rolls back to `filebrowser.prev`.
+- Plan: be at the Mac before the deploy starts and approve the prompt when it appears.
 - Later deploys keep the same identity, so no more prompts.
 
 ## Manual deploy
